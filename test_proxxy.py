@@ -3,6 +3,8 @@ import mock
 import boto3
 import urllib.parse
 import pytest
+import asyncio
+import aiohttp.web
 
 # Set up dummy credentials for boto
 boto3.setup_default_session(
@@ -47,16 +49,14 @@ def test_object_url_put():
     assert query_args['Expires'] == [str(expires)]
 
 
-@pytest.fixture
+@pytest.yield_fixture
 def p(request):
     p = proxxy.Proxxy('bucket1')
     p.suffix = '.hostname.domainname'
 
-    def finish():
-        p.close()
+    yield p
 
-    request.addfinalizer(finish)
-    return p
+    p.close()
 
 
 def test_proxxy(p):
@@ -84,3 +84,34 @@ def test_request_parsing(p):
 
     o = p.get_object_name(request)
     assert o == 'ftp/foo/bar'
+
+
+class FakeRequestSession:
+    def __init__(self, status, text):
+        self.status = status
+        self.text = text
+
+    @asyncio.coroutine
+    def request(self, *args, **kwargs):
+        self.request_args = args
+        self.request_kwargs = kwargs
+        return self
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+def test_is_cached(p):
+    # Mock out request_session...
+    with mock.patch.object(p, 'request_session', FakeRequestSession(200, 'OK')):
+        result = yield from p.is_cached('/foo/bar')
+        assert result is True
+
+    with mock.patch.object(p, 'request_session', FakeRequestSession(404, 'Not Found')):
+        result = yield from p.is_cached('/foo/bar')
+        assert result is False
+
+    with mock.patch.object(p, 'request_session', FakeRequestSession(500, 'ISE')):
+        result = yield from p.is_cached('/foo/bar')
+        assert result is False
