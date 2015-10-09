@@ -24,7 +24,8 @@ def make_object_url(bucket_name, object_name, request_method, expires_in,
         request_method (str): HTTP method to grant permission to. Defaults to
                               'GET'; other values could be 'HEAD'
         expires_in (int): seconds the URL should be valid for
-        api_kwargs (dict): additional parameters to pass as arguments to the S3 API, e.g. ContentLength
+        api_kwargs (dict): additional parameters to pass as arguments to the S3
+                           API, e.g. ContentLength
     """
     if request_method in ('GET', 'HEAD'):
         api_method = 'get_object'
@@ -61,7 +62,8 @@ class Proxxy:
         GET /foo/bar
         Host: remotename.localhost
 
-        Will result in this proxy fetching /foo/bar from the backend host corresponding to remotename
+        Will result in this proxy fetching /foo/bar from the backend host
+        corresponding to remotename
 
     There are a few class variables that can be overridden:
         suffix (str): The suffix to strip off requests to determine which
@@ -69,7 +71,8 @@ class Proxxy:
                       but should be whatever DNS name is used to reach this
                       service.
 
-        reduced_redundancy (bool): If True (the default), then reduced redundancy storage is used on S3
+        reduced_redundancy (bool): If True (the default), then reduced
+                                   redundancy storage is used on S3
     """
 
     suffix = ".{}".format(socket.getfqdn())
@@ -111,15 +114,18 @@ class Proxxy:
 
         Arguments:
             backend_name (str): Which CNAME we will map to this backend
-            backend_remote (str): The canonical backend URL to fetch resources from
+            backend_remote (str): The canonical backend URL to fetch resources
+                                  from
         """
         self.backends[backend_name] = backend_remote
 
     def make_object_url(self, object_name, request_method='GET'):
         """
-        Wrapper around top-level make_object_url that uses self.bucket_name, and self.expiry_time.
+        Wrapper around top-level make_object_url that uses self.bucket_name,
+        and self.expiry_time.
         """
-        return make_object_url(self.bucket_name, object_name, request_method, expires_in=self.expiry_time)
+        return make_object_url(self.bucket_name, object_name, request_method,
+                               expires_in=self.expiry_time)
 
     def make_put_url(self, object_name, backend_response):
         """
@@ -131,12 +137,15 @@ class Proxxy:
         """
         # TODO: Copy cache control / expiry headers
         # TODO: Set lifecycle policy?
-        storage_class = 'REDUCED_REDUNDANCY' if self.reduced_redundancy else 'STANDARD'
-        api_kwargs = {'ContentLength': int(backend_response.headers['Content-Length']),
-                      'ContentType': backend_response.headers['Content-Type'],
-                      'StorageClass': storage_class,
-                      }
-        url = make_object_url(self.bucket_name, object_name, 'PUT', expires_in=self.expiry_time,
+        storage_class = ('REDUCED_REDUNDANCY' if self.reduced_redundancy
+                         else 'STANDARD')
+        api_kwargs = {
+            'ContentLength': int(backend_response.headers['Content-Length']),
+            'ContentType': backend_response.headers['Content-Type'],
+            'StorageClass': storage_class,
+        }
+        url = make_object_url(self.bucket_name, object_name, 'PUT',
+                              expires_in=self.expiry_time,
                               api_kwargs=api_kwargs)
         headers = {
             'Content-Length': backend_response.headers['Content-Length'],
@@ -145,7 +154,6 @@ class Proxxy:
 
         }
         return url, headers
-
 
     def get_backend(self, request):
         hostname = request.host
@@ -226,7 +234,6 @@ class Proxxy:
             log.info('400 invalid prefix %s', request.path_qs)
             raise aiohttp.web.Response(status=400, text='invalid host prefix')
 
-
     @asyncio.coroutine
     def handle_in_progress(self, request):
         # If there's another request for this object, wait for it to finish
@@ -234,16 +241,21 @@ class Proxxy:
         object_name = self.get_object_name(request)
         if object_name in self.in_progress:
             log.debug('waiting for other request to finish')
-            url = yield from asyncio.wait_for(self.in_progress[object_name], None)
+            url = (yield from
+                   asyncio.wait_for(self.in_progress[object_name], None))
             if url:
-                return aiohttp.web.Response(status=302, headers={'Location': url})
+                return aiohttp.web.Response(status=302,
+                                            headers={'Location': url})
 
     @asyncio.coroutine
     def handle_cached_object(self, request):
         object_name = self.get_object_name(request)
         if (yield from self.is_cached(object_name)):
             log.info('302 CACHE_HIT %s', request.path_qs)
-            return aiohttp.web.Response(status=302, headers={'Location': self.make_object_url(object_name, request.method)})
+            return aiohttp.web.Response(
+                status=302,
+                headers={'Location': self.make_object_url(object_name,
+                                                          request.method)})
         elif request.method == 'HEAD':
             log.info('404 CACHE_MISS %s', request.path_qs)
             return aiohttp.web.Response(status=404, text='object not found')
@@ -256,20 +268,25 @@ class Proxxy:
             self.in_progress[object_name] = asyncio.Future()
 
             log.debug('fetching %s', backend_url)
-            backend_response = yield from self.request_session.request('get', backend_url)
+            backend_response = (yield from self.request_session.request(
+                'get', backend_url))
 
             # TODO: Check that we got a 200 or successful response!!
             # follow redirects?
             if backend_response.status != 200:
                 backend_response.close()
-                return aiohttp.web.Response(status=backend_response.status, text='backend response: {}'.format(backend_response.status))
+                return aiohttp.web.Response(
+                    status=backend_response.status,
+                    text='backend response: {}'.format(
+                        backend_response.status))
 
-            put_url, put_headers = self.make_put_url(object_name, backend_response)
+            put_url, put_headers = self.make_put_url(object_name,
+                                                     backend_response)
 
             log.debug('putting to %s; headers: %s', put_url, put_headers)
-            s3_response = (yield from
-                           self.request_session.request('put', put_url, headers=put_headers,
-                                                        data=backend_response.content))
+            s3_response = (yield from self.request_session.request(
+                'put', put_url, headers=put_headers,
+                data=backend_response.content))
 
             backend_response.close()
             s3_response.close()
