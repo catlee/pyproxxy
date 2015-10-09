@@ -136,3 +136,25 @@ def test_validate_request(p):
     assert resp.status == 400
     assert 'invalid host suffix' in resp.text
 
+
+@pytest.mark.asyncio
+def test_handle_in_progress(p):
+    r = FakeRequest()
+    p.add_backend('ftp', 'https://ftp.mozilla.org')
+    object_name = p.get_object_name(r)
+
+    resp = yield from p.handle_in_progress(r)
+    assert resp is None
+
+    f = asyncio.Future()
+    p.in_progress[object_name] = f
+
+    c = p.handle_in_progress(r)
+    r = next(c)
+    assert r is f
+    assert not r.done()
+
+    f.set_result('http://foo/bar')
+    r = yield from c
+    assert r.status == 302
+    assert r.headers['Location'] == 'http://foo/bar'

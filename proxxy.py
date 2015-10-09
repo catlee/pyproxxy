@@ -104,8 +104,9 @@ class Proxxy:
         Close any resources in use by this instance
         """
         self.request_session.close()
-        for f in self.in_progress:
-            f.set_result(False)
+        for f in self.in_progress.values():
+            if not f.done():
+                f.set_result(False)
         self.in_progress = {}
 
     def add_backend(self, backend_name, backend_remote):
