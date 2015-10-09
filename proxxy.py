@@ -186,6 +186,7 @@ class Proxxy:
         Arguments:
             object_name (str): The complete name of the object
         """
+        # TODO: Cache these responses for a short amount of time
         url = self.make_object_url(object_name, 'HEAD')
         log.debug('Checking %s', url)
         req = yield from self.request_session.request('head', url)
