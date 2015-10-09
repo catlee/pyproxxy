@@ -228,12 +228,12 @@ class Proxxy:
         hostname = request.host
         if not hostname.endswith(self.suffix):
             log.info('400 invalid suffix %s', request.path_qs)
-            raise aiohttp.web.Response(status=400, text='invalid host suffix')
+            return aiohttp.web.Response(status=400, text='invalid host suffix')
 
         backend_name = hostname[:-len(self.suffix)]
         if backend_name not in self.backends:
             log.info('400 invalid prefix %s', request.path_qs)
-            raise aiohttp.web.Response(status=400, text='invalid host prefix')
+            return aiohttp.web.Response(status=400, text='invalid host prefix')
 
     @asyncio.coroutine
     def handle_in_progress(self, request):

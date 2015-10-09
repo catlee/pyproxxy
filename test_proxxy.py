@@ -104,14 +104,35 @@ class FakeRequestSession:
 @pytest.mark.asyncio
 def test_is_cached(p):
     # Mock out request_session...
-    with mock.patch.object(p, 'request_session', FakeRequestSession(200, 'OK')):
+    with mock.patch.object(p, 'request_session', FakeRequestSession(200, 'OK')) as r:
         result = yield from p.is_cached('/foo/bar')
         assert result is True
+        assert r.request_args[0] == 'head'
 
-    with mock.patch.object(p, 'request_session', FakeRequestSession(404, 'Not Found')):
+    with mock.patch.object(p, 'request_session', FakeRequestSession(404, 'Not Found')) as r:
         result = yield from p.is_cached('/foo/bar')
         assert result is False
+        assert r.request_args[0] == 'head'
 
-    with mock.patch.object(p, 'request_session', FakeRequestSession(500, 'ISE')):
+    with mock.patch.object(p, 'request_session', FakeRequestSession(500, 'ISE')) as r:
         result = yield from p.is_cached('/foo/bar')
         assert result is False
+        assert r.request_args[0] == 'head'
+
+
+@pytest.mark.asyncio
+def test_validate_request(p):
+    r = FakeRequest()
+    resp = yield from p.validate_request(r)
+    assert resp.status == 400
+    assert 'invalid host prefix' in resp.text
+
+    p.add_backend('ftp', 'https://ftp.mozilla.org')
+    resp = yield from p.validate_request(r)
+    assert resp is None
+
+    r.host = 'differenthost.domain'
+    resp = yield from p.validate_request(r)
+    assert resp.status == 400
+    assert 'invalid host suffix' in resp.text
+
